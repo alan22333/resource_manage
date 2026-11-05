@@ -1,0 +1,38 @@
+{
+  "name": "ai-task-manager",
+  "private": true,
+  "version": "0.2.0",
+  "type": "module",
+  "scripts": {
+    "dev": "mygo dev",
+    "build": "mygo build",
+    "generate": "mygo generate",
+    "dev:web": "vite",
+    "build:web": "tsc --noEmit && vite build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:web": "vitest run",
+    "test:go": "GOTOOLCHAIN=auto go test ./..."
+  },
+  "dependencies": {
+    "@radix-ui/react-dialog": "^1.1.15",
+    "@radix-ui/react-tooltip": "^1.2.8",
+    "lucide-react": "^0.552.0",
+    "mygo-runtime": "^0.7.4",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.0",
+    "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.2",
+    "@vitejs/plugin-react": "^5.1.0",
+    "jsdom": "^27.1.0",
+    "mygo-cli": "^0.7.4",
+    "typescript": "^7.0.0",
+    "vite": "^8.0.0",
+    "vitest": "^4.0.8"
+  }
+}
+
