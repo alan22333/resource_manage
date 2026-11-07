@@ -10,11 +10,6 @@
       <stop offset="0.44" stop-color="#83F2C9"/>
       <stop offset="1" stop-color="#4ED9A7"/>
     </linearGradient>
-    <linearGradient id="rim" x1="180" y1="130" x2="838" y2="916" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#E4FFF5" stop-opacity=".28"/>
-      <stop offset=".48" stop-color="#9FF8D5" stop-opacity=".06"/>
-      <stop offset="1" stop-color="#58D9A9" stop-opacity=".14"/>
-    </linearGradient>
     <radialGradient id="ambient" cx="0" cy="0" r="1" gradientTransform="translate(508 494) rotate(90) scale(410)" gradientUnits="userSpaceOnUse">
       <stop stop-color="#75F0C4" stop-opacity=".12"/>
       <stop offset="1" stop-color="#75F0C4" stop-opacity="0"/>
@@ -29,8 +24,6 @@
   </defs>
   <g filter="url(#shadow)">
     <rect x="72" y="72" width="880" height="880" rx="204" fill="url(#bg)"/>
-    <rect x="74" y="74" width="876" height="876" rx="202" stroke="url(#rim)" stroke-width="4"/>
-    <path d="M103 340C154 193 272 109 417 89H607C752 109 870 193 921 340" stroke="#E2FFF5" stroke-opacity=".075" stroke-width="9" stroke-linecap="round"/>
   </g>
 
   <circle cx="512" cy="512" r="326" fill="url(#ambient)"/>
