@@ -4,6 +4,7 @@ export default defineConfig({
   name: "AI 任务管理器",
   slug: "ai-task-manager",
   identifier: "dev.aitaskmanager.desktop",
+  icon: "resources/icon.png",
   version: "0.2.0",
   copyright: "© 2026 AI Task Manager contributors",
   publisher: "AI Task Manager contributors",
