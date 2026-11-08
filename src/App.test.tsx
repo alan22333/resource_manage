@@ -38,6 +38,8 @@ describe("AI task manager acceptance", () => {
     expect(screen.getAllByText(/疑似残留/).length).toBeGreaterThan(0);
     expect(screen.getByRole("heading", { name: /系统正在变热/ })).toBeInTheDocument();
     expect(screen.getByText("Serious")).toBeInTheDocument();
+    expect(screen.getByLabelText("本次运行热压力采样")).toBeInTheDocument();
+    expect(within(screen.getByLabelText("本次运行热压力采样")).getAllByRole("listitem")).toHaveLength(8);
     expect(document.body.textContent).not.toMatch(/[°℃]/);
 
     // Secondary evidence views stay out of the calm overview.
@@ -78,7 +80,13 @@ describe("AI task manager acceptance", () => {
     expect(within(dialog).getByText("IDE / Shell 保留")).toBeInTheDocument();
     expect(within(dialog).getByText(/只发送 SIGTERM/)).toBeInTheDocument();
 
-    fireEvent.click(within(dialog).getByRole("button", { name: /确认停止 12 个进程/ }));
+    const confirmation = within(dialog).getByRole("checkbox", { name: /我已核对影响范围/ });
+    expect(confirmation).not.toBeChecked();
+    expect(within(dialog).getByRole("button", { name: "请先勾选确认" })).toBeDisabled();
+
+    fireEvent.click(confirmation);
+    expect(confirmation).toBeChecked();
+    fireEvent.click(within(dialog).getByRole("button", { name: /确认并停止 12 个进程/ }));
 
     await waitFor(() => expect(within(dialog).getByText("安全回收完成")).toBeInTheDocument());
     expect(within(dialog).getByText("逐 PID 审计")).toBeInTheDocument();
@@ -167,6 +175,7 @@ describe("AI task manager acceptance", () => {
       pending: [],
       message: "安全回收完成",
       reclaimedBytes: 1290000000,
+      confirmedAt: 1793845890000,
       finishedAt: 1793845900000,
     });
     expect(unrelated.thermal.state).toBe("serious");
@@ -182,6 +191,7 @@ describe("AI task manager acceptance", () => {
       pending: [],
       message: "安全回收完成",
       reclaimedBytes: 3140000000,
+      confirmedAt: 1793845890000,
       finishedAt: 1793845900000,
     });
     expect(resolved.thermal).toMatchObject({

@@ -1083,6 +1083,48 @@
     ],
     "recommendation": "先预览旧分支的回收影响，核对受保护 Agent 根与可分离后代；确认前不会发送信号。",
     "confidence": 91,
-    "observedAt": 1793845800000
+    "observedAt": 1793845800000,
+    "history": [
+      {
+        "state": "nominal",
+        "observedAt": 1793845200000,
+        "durationSeconds": 0
+      },
+      {
+        "state": "fair",
+        "observedAt": 1793845260000,
+        "durationSeconds": 0
+      },
+      {
+        "state": "fair",
+        "observedAt": 1793845320000,
+        "durationSeconds": 60
+      },
+      {
+        "state": "serious",
+        "observedAt": 1793845380000,
+        "durationSeconds": 120
+      },
+      {
+        "state": "serious",
+        "observedAt": 1793845440000,
+        "durationSeconds": 180
+      },
+      {
+        "state": "serious",
+        "observedAt": 1793845500000,
+        "durationSeconds": 240
+      },
+      {
+        "state": "serious",
+        "observedAt": 1793845560000,
+        "durationSeconds": 300
+      },
+      {
+        "state": "serious",
+        "observedAt": 1793845800000,
+        "durationSeconds": 372
+      }
+    ]
   }
 }

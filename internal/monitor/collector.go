@@ -338,7 +338,7 @@ func buildLiveWorkload(anchor *rawProcess, members []*rawProcess, byPID map[int3
 		evidence = append(evidence, Evidence{Label: "高内存", Detail: fmt.Sprintf("当前占用 %s", formatBytes(rss)), Tone: "attention"})
 	}
 	if cpuTotal > 25 {
-		evidence = append(evidence, Evidence{Label: "持续高 CPU", Detail: fmt.Sprintf("任务组当前约 %.1f%% CPU", cpuTotal), Tone: "attention"})
+		evidence = append(evidence, Evidence{Label: "高 CPU 采样", Detail: fmt.Sprintf("本次采样任务组约 %.1f%% CPU", cpuTotal), Tone: "attention"})
 	}
 	if (mcpCount >= 4 && rss > 700*MB && age > 15*60) || (kind == "mcp" && anchor.ppid <= 1) {
 		risk = "reclaim"
@@ -349,7 +349,7 @@ func buildLiveWorkload(anchor *rawProcess, members []*rawProcess, byPID map[int3
 			riskDetail = "父会话已退出，MCP 进程组仍由系统接管"
 			evidence = append(evidence, Evidence{Label: "父进程已退出", Detail: "根 MCP 已由 launchd 接管", Tone: "danger"})
 		} else {
-			riskDetail = fmt.Sprintf("重复 MCP 已运行 %s，且未见明显活动", formatAge(age))
+			riskDetail = fmt.Sprintf("重复 MCP 已运行 %s；本次采样仅为 %.1f%% CPU", formatAge(age), cpuTotal)
 		}
 		evidence = append(evidence, Evidence{Label: "可安全分离", Detail: "计划只包含该任务组内可验证身份的后代进程", Tone: "healthy"})
 	} else if cpuTotal > 20 || rss > 1500*MB {
@@ -397,8 +397,8 @@ func buildLiveWorkload(anchor *rawProcess, members []*rawProcess, byPID map[int3
 		Protected:       protected,
 		ProtectedReason: protectedReason,
 		StartedAt:       anchor.startedAt,
-		LastActivity:    liveLastActivity(cpuTotal, age),
-		Trend:           trendFor(anchor.pid, cpuTotal),
+		LastActivity:    liveActivityState(cpuTotal),
+		Trend:           []float64{round1(cpuTotal)},
 		Evidence:        evidence,
 		Processes:       nodes,
 	}
@@ -463,7 +463,7 @@ func summarizeLive(now time.Time, workloads []Workload, system SystemMetrics, do
 		Workloads: workloads,
 		Events:    events,
 		Capabilities: Capabilities{
-			CanStop:       true,
+			CanStop:       runtime.GOOS != "windows",
 			Docker:        docker,
 			Elevated:      os.Geteuid() == 0,
 			Platform:      runtime.GOOS,
@@ -487,11 +487,11 @@ func liveEvents(now time.Time, workloads []Workload) []Event {
 		}
 		events = append(events, Event{
 			ID:           "live-event-" + workload.ID,
-			Time:         now.Add(-time.Duration(len(events)+1) * 2 * time.Minute).UnixMilli(),
+			Time:         now.UnixMilli(),
 			Kind:         workload.Risk,
 			WorkloadID:   workload.ID,
 			WorkloadName: workload.Name,
-			Title:        title,
+			Title:        "本次巡检：" + title,
 			Detail:       detail,
 			Tone:         tone,
 		})
@@ -545,28 +545,11 @@ func stableWorkloadID(pid int32, startedAt int64) string {
 	return fmt.Sprintf("wl-%d-%d", pid, startedAt)
 }
 
-func trendFor(seed int32, current float64) []float64 {
-	values := make([]float64, 24)
-	base := math.Max(current*0.45, 0.2)
-	for i := range values {
-		wave := math.Sin(float64(i+int(seed%7))*0.72)*0.22 + math.Cos(float64(i+int(seed%5))*0.31)*0.11
-		progress := float64(i) / float64(len(values)-1)
-		values[i] = round1(math.Max(0.1, base*(0.55+progress*0.55+wave)))
-	}
-	if len(values) > 0 {
-		values[len(values)-1] = round1(current)
-	}
-	return values
-}
-
-func liveLastActivity(cpu float64, age int64) string {
+func liveActivityState(cpu float64) string {
 	if cpu > 3 {
-		return "刚刚"
+		return "本次采样观察到 CPU 活动"
 	}
-	if age > 3600 {
-		return "低活动较久"
-	}
-	return "近 2 分钟内"
+	return "本次采样为低 CPU 活动"
 }
 
 func countKinds(workloads []Workload, kind string) int {

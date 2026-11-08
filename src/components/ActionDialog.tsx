@@ -15,7 +15,7 @@ import { isMyGo } from "mygo-runtime";
 import type { ActionPlan, ActionResult, Workload } from "../mygo";
 import { TaskManager } from "../mygo";
 import { formatBytes } from "../lib/format";
-import { makeLocalPreview, makeLocalResult } from "../lib/preview";
+import { makeLocalConfirmation, makeLocalPreview, makeLocalResult } from "../lib/preview";
 
 interface ActionDialogProps {
   workload: Workload | null;
@@ -31,6 +31,7 @@ export function ActionDialog({ workload, mode, open, onOpenChange, onCompleted }
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [executing, setExecuting] = useState(false);
+  const [acknowledged, setAcknowledged] = useState(false);
 
   useEffect(() => {
     if (!open || !workload) return;
@@ -38,6 +39,7 @@ export function ActionDialog({ workload, mode, open, onOpenChange, onCompleted }
     setPlan(null);
     setResult(null);
     setError(null);
+    setAcknowledged(false);
     setLoading(true);
 
     const load = async () => {
@@ -60,15 +62,23 @@ export function ActionDialog({ workload, mode, open, onOpenChange, onCompleted }
   }, [open, workload, mode]);
 
   const execute = async () => {
-    if (!plan) return;
+    if (!plan || !acknowledged) return;
     setExecuting(true);
     setError(null);
     try {
-      const nextResult = isMyGo() ? await TaskManager.execute(plan.token) : makeLocalResult(plan);
+      const confirmation = isMyGo()
+        ? await TaskManager.confirm(plan.token)
+        : makeLocalConfirmation(plan);
+      if (confirmation.targetCount !== plan.targets.length || confirmation.estimatedRssBytes !== plan.estimatedRssBytes) {
+        throw new Error("确认摘要与预览不一致，已拒绝执行，请重新预览");
+      }
+      const nextResult = isMyGo()
+        ? await TaskManager.execute(confirmation.token)
+        : makeLocalResult(plan);
       setResult(nextResult);
       onCompleted(nextResult);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "执行失败，请重新预览");
+      setError(reason instanceof Error ? reason.message : "确认或执行失败，请重新预览");
     } finally {
       setExecuting(false);
     }
@@ -204,14 +214,32 @@ export function ActionDialog({ workload, mode, open, onOpenChange, onCompleted }
                 {plan.warnings.map((warning) => <li key={warning}><ShieldCheck size={13} aria-hidden="true" />{warning}</li>)}
               </ul>
 
+              <label className="confirm-control">
+                <input
+                  type="checkbox"
+                  checked={acknowledged}
+                  disabled={executing}
+                  onChange={(event) => setAcknowledged(event.target.checked)}
+                />
+                <span className="confirm-control__copy">
+                  <strong>我已核对影响范围</strong>
+                  <span>我确认停止上面列出的 {plan.targets.length} 个 PID；受保护的 Agent 根、IDE 和 Shell 不在本次范围内。</span>
+                </span>
+              </label>
+
               <div className="dialog-actions">
-                <button type="button" className="secondary-button" onClick={close}>取消</button>
-                <button type="button" className="danger-button" onClick={() => void execute()} disabled={executing}>
+                <button type="button" className="secondary-button" onClick={close} disabled={executing}>取消</button>
+                <button
+                  type="button"
+                  className="danger-button"
+                  onClick={() => void execute()}
+                  disabled={!acknowledged || executing}
+                >
                   {executing ? <LoaderCircle className="spin" size={16} aria-hidden="true" /> : <ShieldCheck size={16} aria-hidden="true" />}
-                  {executing ? "正在优雅停止…" : `确认停止 ${plan.targets.length} 个进程`}
+                  {executing ? "正在重新校验并停止…" : acknowledged ? `确认并停止 ${plan.targets.length} 个进程` : "请先勾选确认"}
                 </button>
               </div>
-              <p className="dialog-footnote">操作令牌将在 2 分钟后过期；本次确认只能使用一次。</p>
+              <p className="dialog-footnote">确认后才会生成单次执行令牌；执行前会再次逐个校验 PID 与启动时间，令牌 2 分钟后过期。</p>
             </div>
           ) : null}
         </Dialog.Content>

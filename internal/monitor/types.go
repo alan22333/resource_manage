@@ -132,6 +132,18 @@ type ActionPlan struct {
 	Warnings       []string           `json:"warnings"`
 }
 
+// ActionConfirmation is issued only after the user explicitly confirms a
+// read-only preview. A preview token can never be passed to Execute directly.
+type ActionConfirmation struct {
+	Token           string `json:"token"`
+	WorkloadID      string `json:"workloadId"`
+	WorkloadName    string `json:"workloadName"`
+	TargetCount     int    `json:"targetCount"`
+	EstimatedRSS    uint64 `json:"estimatedRssBytes"`
+	ConfirmedAtUnix int64  `json:"confirmedAtUnix"`
+	ExpiresAtUnix   int64  `json:"expiresAtUnix"`
+}
+
 type ActionFailure struct {
 	PID    int32  `json:"pid"`
 	Name   string `json:"name"`
@@ -148,6 +160,7 @@ type ActionResult struct {
 	Pending        []int32         `json:"pending"`
 	Message        string          `json:"message"`
 	ReclaimedBytes uint64          `json:"reclaimedBytes"`
+	ConfirmedAt    int64           `json:"confirmedAt"`
 	FinishedAt     int64           `json:"finishedAt"`
 }
 

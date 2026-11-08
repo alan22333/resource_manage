@@ -1025,6 +1025,76 @@ button:disabled {
   line-height: 1.5;
 }
 
+.thermal-history {
+  display: grid;
+  grid-column: 2 / -1;
+  grid-template-columns: auto minmax(160px, 1fr);
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding-top: 13px;
+  border-top: 1px solid color-mix(in srgb, var(--thermal-tone) 11%, var(--border));
+}
+
+.thermal-history__heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 9px;
+  min-width: 0;
+}
+
+.thermal-history__heading > span:last-child {
+  color: var(--text-3);
+  font-size: 12px;
+}
+
+.thermal-history__label {
+  color: var(--text-2);
+  font-size: 12.5px;
+  font-weight: 660;
+}
+
+.thermal-history--empty {
+  grid-template-columns: auto 1fr;
+  color: var(--text-3);
+  font-size: 12px;
+}
+
+.thermal-history__track {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+  height: 18px;
+  min-width: 0;
+  overflow: hidden;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface-2);
+}
+
+.thermal-history__sample {
+  min-width: 5px;
+  height: 10px;
+  flex: 1 1 0;
+  border-radius: 3px;
+  background: var(--text-3);
+  transform-origin: center;
+  animation: thermalSampleIn 260ms var(--ease-out) both;
+}
+
+.thermal-history__sample--nominal { background: var(--mint); }
+.thermal-history__sample--fair { background: #d9ad61; }
+.thermal-history__sample--serious { background: var(--amber); }
+.thermal-history__sample--critical { background: var(--danger); }
+.thermal-history__sample--unavailable { background: color-mix(in srgb, var(--text-3) 55%, transparent); }
+
+@keyframes thermalSampleIn {
+  from { opacity: 0; transform: scaleY(0.45); }
+  to { opacity: 1; transform: scaleY(1); }
+}
+
 .overview-hero {
   position: relative;
   display: grid;
@@ -3999,6 +4069,55 @@ button:disabled {
   color: var(--mint);
 }
 
+.confirm-control {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  margin-top: 15px;
+  padding: 13px 14px;
+  border: 1px solid color-mix(in srgb, var(--amber) 25%, var(--border));
+  border-radius: 13px;
+  background: color-mix(in srgb, var(--amber-soft) 52%, var(--surface));
+  cursor: pointer;
+  transition: border-color 160ms ease, background 160ms ease, box-shadow 160ms ease;
+}
+
+.confirm-control:hover {
+  border-color: color-mix(in srgb, var(--amber) 38%, var(--border));
+}
+
+.confirm-control:has(input:checked) {
+  border-color: color-mix(in srgb, var(--mint) 38%, var(--border));
+  background: color-mix(in srgb, var(--mint-soft) 58%, var(--surface));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--mint) 8%, transparent);
+}
+
+.confirm-control input {
+  width: 17px;
+  height: 17px;
+  flex: none;
+  margin: 1px 0 0;
+  accent-color: var(--mint-strong);
+}
+
+.confirm-control__copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.confirm-control__copy strong {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 680;
+}
+
+.confirm-control__copy span {
+  color: var(--text-2);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .dialog-actions {
   display: flex;
   justify-content: flex-end;
@@ -4181,7 +4300,8 @@ button:disabled {
     justify-self: start;
   }
 
-  .thermal-card__details {
+  .thermal-card__details,
+  .thermal-history {
     grid-column: 1 / -1;
   }
 

@@ -18,12 +18,21 @@ type pendingPlan struct {
 	createdAt time.Time
 }
 
+type confirmedPlan struct {
+	plan        ActionPlan
+	demo        bool
+	confirmedAt time.Time
+	expiresAt   time.Time
+}
+
 type Service struct {
 	collector       *LiveCollector
 	liveMu          sync.Mutex
+	liveState       *liveStateTracker
 	thermalEpisodes *thermalEpisodeTracker
 	mu              sync.Mutex
 	pending         map[string]pendingPlan
+	confirmed       map[string]confirmedPlan
 	demoStopped     map[string]ActionResult
 	aiMu            sync.RWMutex
 	aiOverride      *aiProviderConfig
@@ -32,8 +41,10 @@ type Service struct {
 func NewService() *Service {
 	return &Service{
 		collector:       NewLiveCollector(),
+		liveState:       newLiveStateTracker(),
 		thermalEpisodes: newThermalEpisodeTracker(),
 		pending:         make(map[string]pendingPlan),
+		confirmed:       make(map[string]confirmedPlan),
 		demoStopped:     make(map[string]ActionResult),
 	}
 }
@@ -58,6 +69,7 @@ func (s *Service) Snapshot(demo bool) (Snapshot, error) {
 		return Snapshot{}, err
 	}
 	now := time.Now()
+	s.liveState.enrich(&snapshot, now)
 	snapshot.Thermal = s.thermalEpisodes.observe(readThermalState(), snapshot, now)
 	return snapshot, nil
 }
@@ -74,7 +86,9 @@ func (s *Service) CheckThermal() (ThermalStatus, *ThermalAlert, error) {
 	if err != nil {
 		return ThermalStatus{}, nil, err
 	}
-	status := s.thermalEpisodes.observe(readThermalState(), snapshot, time.Now())
+	now := time.Now()
+	s.liveState.enrich(&snapshot, now)
+	status := s.thermalEpisodes.observe(readThermalState(), snapshot, now)
 	return status, s.thermalEpisodes.takeAlert(), nil
 }
 
@@ -92,6 +106,9 @@ func (s *Service) Preview(workloadID string, demo bool) (ActionPlan, error) {
 	}
 	if workload == nil {
 		return ActionPlan{}, errors.New("任务不存在或已经退出，请刷新后重试")
+	}
+	if !snapshot.Capabilities.CanStop {
+		return ActionPlan{}, errors.New("当前平台仅支持只读监控，不会发送进程信号")
 	}
 	if !workload.Reclaimable {
 		return ActionPlan{}, errors.New("该任务没有足够证据进入回收计划")
@@ -142,30 +159,72 @@ func (s *Service) Preview(workloadID string, demo bool) (ActionPlan, error) {
 	return plan, nil
 }
 
-func (s *Service) Execute(token string) (ActionResult, error) {
+// Confirm converts a preview into a short-lived, single-use execution token.
+// The desktop UI calls this only after the user reviews the complete blast
+// radius and explicitly checks the confirmation control.
+func (s *Service) Confirm(previewToken string) (ActionConfirmation, error) {
 	s.mu.Lock()
-	pending, ok := s.pending[token]
+	pending, ok := s.pending[previewToken]
 	if ok {
-		delete(s.pending, token)
+		delete(s.pending, previewToken)
 	}
 	s.cleanupLocked(time.Now())
 	s.mu.Unlock()
 	if !ok {
-		return ActionResult{}, errors.New("动作令牌无效、已使用或已过期，请重新预览")
+		return ActionConfirmation{}, errors.New("预览令牌无效、已使用或已过期，请重新检查影响范围")
 	}
 	if time.Since(pending.createdAt) > 2*time.Minute {
-		return ActionResult{}, errors.New("动作预览已过期，请重新检查影响范围")
+		return ActionConfirmation{}, errors.New("动作预览已过期，请重新检查影响范围")
+	}
+
+	token, err := randomToken()
+	if err != nil {
+		return ActionConfirmation{}, fmt.Errorf("创建确认令牌失败: %w", err)
+	}
+	now := time.Now()
+	expiresAt := now.Add(2 * time.Minute)
+	s.mu.Lock()
+	s.confirmed[token] = confirmedPlan{plan: pending.plan, demo: pending.demo, confirmedAt: now, expiresAt: expiresAt}
+	s.cleanupLocked(now)
+	s.mu.Unlock()
+	return ActionConfirmation{
+		Token:           token,
+		WorkloadID:      pending.plan.WorkloadID,
+		WorkloadName:    pending.plan.WorkloadName,
+		TargetCount:     len(pending.plan.Targets),
+		EstimatedRSS:    pending.plan.EstimatedRSS,
+		ConfirmedAtUnix: now.Unix(),
+		ExpiresAtUnix:   expiresAt.Unix(),
+	}, nil
+}
+
+// Execute accepts only a confirmation token. Preview tokens are deliberately
+// rejected so that opening a blast-radius dialog can never send a signal.
+func (s *Service) Execute(token string) (ActionResult, error) {
+	s.mu.Lock()
+	pending, ok := s.confirmed[token]
+	if ok {
+		delete(s.confirmed, token)
+	}
+	s.cleanupLocked(time.Now())
+	s.mu.Unlock()
+	if !ok {
+		return ActionResult{}, errors.New("执行令牌无效、已使用或未经确认，请重新预览并确认")
+	}
+	if time.Now().After(pending.expiresAt) {
+		return ActionResult{}, errors.New("确认已过期，请重新检查影响范围")
 	}
 
 	if pending.demo {
 		result := ActionResult{
-			Token:          pending.plan.Token,
+			Token:          token,
 			WorkloadID:     pending.plan.WorkloadID,
 			WorkloadName:   pending.plan.WorkloadName,
 			Mode:           "demo",
 			Stopped:        make([]int32, 0, len(pending.plan.Targets)),
 			Message:        fmt.Sprintf("演示：已安全停止 %d 个进程，预计释放 %s", len(pending.plan.Targets), formatBytes(pending.plan.EstimatedRSS)),
 			ReclaimedBytes: pending.plan.EstimatedRSS,
+			ConfirmedAt:    pending.confirmedAt.UnixMilli(),
 			FinishedAt:     time.Now().UnixMilli(),
 		}
 		for _, target := range pending.plan.Targets {
@@ -176,7 +235,11 @@ func (s *Service) Execute(token string) (ActionResult, error) {
 		s.mu.Unlock()
 		return result, nil
 	}
-	return executeLive(pending.plan), nil
+	result := executeLive(pending.plan)
+	result.Token = token
+	result.ConfirmedAt = pending.confirmedAt.UnixMilli()
+	s.liveState.recordAction(result)
+	return result, nil
 }
 
 func executeLive(plan ActionPlan) ActionResult {
@@ -242,6 +305,11 @@ func (s *Service) cleanupLocked(now time.Time) {
 	for token, pending := range s.pending {
 		if now.Sub(pending.createdAt) > 2*time.Minute {
 			delete(s.pending, token)
+		}
+	}
+	for token, pending := range s.confirmed {
+		if now.After(pending.expiresAt) {
+			delete(s.confirmed, token)
 		}
 	}
 }

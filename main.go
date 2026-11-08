@@ -300,12 +300,18 @@ func (t *TaskManager) Explain(question string, workloadID string, demo bool) (mo
 	return answer, err
 }
 
-// Preview validates a reclaim candidate and creates a short-lived action plan.
+// Preview validates a reclaim candidate and creates a short-lived, read-only action plan.
 func (t *TaskManager) Preview(workloadID string, demo bool) (monitor.ActionPlan, error) {
 	return t.service.Preview(workloadID, demo)
 }
 
-// Execute consumes a preview token exactly once.
+// Confirm converts an explicitly reviewed preview into a short-lived execution token.
+// The UI calls this only after the user checks the confirmation control.
+func (t *TaskManager) Confirm(previewToken string) (monitor.ActionConfirmation, error) {
+	return t.service.Confirm(previewToken)
+}
+
+// Execute accepts only a confirmed, single-use execution token.
 func (t *TaskManager) Execute(token string) (monitor.ActionResult, error) {
 	return t.service.Execute(token)
 }

@@ -71,6 +71,20 @@ export interface AITestResult {
   remote: boolean;
 }
 
+/**
+ * ActionConfirmation is issued only after the user explicitly confirms a
+ * read-only preview. A preview token can never be passed to Execute directly.
+ */
+export interface ActionConfirmation {
+  token: string;
+  workloadId: string;
+  workloadName: string;
+  targetCount: number;
+  estimatedRssBytes: number;
+  confirmedAtUnix: number;
+  expiresAtUnix: number;
+}
+
 export interface ActionFailure {
   pid: number;
   name: string;
@@ -102,6 +116,7 @@ export interface ActionResult {
   pending: number[];
   message: string;
   reclaimedBytes: number;
+  confirmedAt: number;
   finishedAt: number;
 }
 
@@ -199,6 +214,16 @@ export interface SystemMetrics {
 }
 
 /**
+ * ThermalSample is one observed public thermal-pressure state. It deliberately
+ * contains no Celsius field: no synthetic temperature is mixed into this view.
+ */
+export interface ThermalSample {
+  state: string;
+  observedAt: number;
+  durationSeconds: number;
+}
+
+/**
  * ThermalStatus is a user-facing thermal episode. macOS exposes pressure
  * levels, not a portable temperature value, so this model deliberately avoids
  * a Celsius field and uses evidence-backed workload attribution instead.
@@ -217,6 +242,7 @@ export interface ThermalStatus {
   recommendation: string;
   confidence: number;
   observedAt: number;
+  history: ThermalSample[];
 }
 
 export interface Workload {
@@ -271,7 +297,14 @@ export const TaskManager = {
   clearAISettings(): Promise<AIStatus> {
     return call("TaskManager.ClearAISettings");
   },
-  /** Execute consumes a preview token exactly once. */
+  /**
+   * Confirm converts an explicitly reviewed preview into a short-lived execution token.
+   * The UI calls this only after the user checks the confirmation control.
+   */
+  confirm(previewToken: string): Promise<ActionConfirmation> {
+    return call("TaskManager.Confirm", previewToken);
+  },
+  /** Execute accepts only a confirmed, single-use execution token. */
   execute(token: string): Promise<ActionResult> {
     return call("TaskManager.Execute", token);
   },
@@ -289,7 +322,7 @@ export const TaskManager = {
   getAISettings(): Promise<AISettings> {
     return call("TaskManager.GetAISettings");
   },
-  /** Preview validates a reclaim candidate and creates a short-lived action plan. */
+  /** Preview validates a reclaim candidate and creates a short-lived, read-only action plan. */
   preview(workloadID: string, demo: boolean): Promise<ActionPlan> {
     return call("TaskManager.Preview", workloadID, demo);
   },

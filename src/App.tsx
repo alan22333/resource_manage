@@ -251,7 +251,7 @@ function App() {
           <span className="sidebar-trust" title="本地优先 · 无遥测">
             <ShieldCheck size={18} aria-hidden="true" />
           </span>
-          <span className="sidebar-version">0.2</span>
+          <span className="sidebar-version">0.2.0</span>
         </div>
       </aside>
 
@@ -768,7 +768,7 @@ function LifecycleFacts({ snapshot }: { snapshot: Snapshot }) {
       {oldest && (
         <div className="fact-block">
           <span className="fact-number metric-number">{formatAge(oldest.ageSeconds)}</span>
-          <div><strong>{oldest.name}</strong><p>当前存活最久的任务组，最近活动：{oldest.lastActivity}。</p></div>
+          <div><strong>{oldest.name}</strong><p>当前存活最久的任务组，采样状态：{oldest.lastActivity}。</p></div>
         </div>
       )}
       <div className="fact-rule"><ShieldCheck size={17} aria-hidden="true" /><span>只把明确可分离的 MCP 后代放入计划；IDE、Shell、Agent 根和容器保持保护。</span></div>

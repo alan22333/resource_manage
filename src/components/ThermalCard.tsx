@@ -6,7 +6,7 @@ import {
   Snowflake,
   ThermometerSun,
 } from "lucide-react";
-import type { ThermalStatus, Workload } from "../mygo";
+import type { ThermalSample, ThermalStatus, Workload } from "../mygo";
 
 interface ThermalCardProps {
   thermal: ThermalStatus;
@@ -32,6 +32,60 @@ function formatDuration(seconds: number): string {
   return `${remaining} 秒`;
 }
 
+const thermalHistoryCopy: Record<string, string> = {
+  nominal: "稳定",
+  fair: "偏高",
+  serious: "严重",
+  critical: "临界",
+  unavailable: "不可用",
+};
+
+function formatSampleTime(timestamp: number): string {
+  if (!Number.isFinite(timestamp) || timestamp <= 0) return "未知时间";
+  return new Intl.DateTimeFormat("zh-CN", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).format(new Date(timestamp));
+}
+
+function ThermalHistory({ history }: { history?: ThermalSample[] }) {
+  const samples = (history ?? []).slice(-12);
+  if (!samples.length) {
+    return (
+      <div className="thermal-history thermal-history--empty" aria-label="本次运行热压力采样">
+        <span className="thermal-history__label">本次运行采样</span>
+        <span>等待真实采样</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="thermal-history" aria-label="本次运行热压力采样">
+      <div className="thermal-history__heading">
+        <span className="thermal-history__label">本次运行采样</span>
+        <span>最近 {samples.length} 条 · 仅公开热压力等级</span>
+      </div>
+      <div className="thermal-history__track" role="list">
+        {samples.map((sample, index) => {
+          const label = thermalHistoryCopy[sample.state] ?? "不可用";
+          const time = formatSampleTime(sample.observedAt);
+          return (
+            <span
+              className={`thermal-history__sample thermal-history__sample--${sample.state}`}
+              role="listitem"
+              key={`${sample.observedAt}-${index}`}
+              aria-label={`${label}，${time}`}
+              title={`${label} · ${time}`}
+            />
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function thermalTone(thermal: ThermalStatus): string {
   if (thermal.recovering) return "recovering";
   if (thermal.state === "critical") return "critical";
@@ -50,6 +104,7 @@ export function ThermalCard({ thermal, workloads, onInspect, onPreview }: Therma
           <p>应用不会猜测温度，仍会使用 CPU、内存与任务证据帮助排查。</p>
         </div>
         <span className="thermal-card__state">Unavailable</span>
+        <ThermalHistory history={thermal.history} />
       </section>
     );
   }
@@ -64,6 +119,7 @@ export function ThermalCard({ thermal, workloads, onInspect, onPreview }: Therma
           <p>{thermal.cause || "后台巡检持续观察，发现持续热压力时会自动关联任务。"}</p>
         </div>
         <span className="thermal-card__state">Nominal</span>
+        <ThermalHistory history={thermal.history} />
       </section>
     );
   }
@@ -126,6 +182,7 @@ export function ThermalCard({ thermal, workloads, onInspect, onPreview }: Therma
           <p>{thermal.recommendation}</p>
         </div>
       </div>
+      <ThermalHistory history={thermal.history} />
     </section>
   );
 }

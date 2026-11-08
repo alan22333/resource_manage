@@ -48,21 +48,61 @@ func TestDemoPreviewRejectsUnsafeOrUnknownWorkloads(t *testing.T) {
 	}
 }
 
-func TestDemoExecuteConsumesTokenExactlyOnce(t *testing.T) {
+func TestPreviewTokenCannotExecuteBeforeConfirmation(t *testing.T) {
 	service := NewService()
 	plan, err := service.Preview("demo-codex-old-branch", true)
 	if err != nil {
 		t.Fatalf("preview failed: %v", err)
 	}
-	result, err := service.Execute(plan.Token)
+
+	if _, err := service.Execute(plan.Token); err == nil || !strings.Contains(err.Error(), "未经确认") {
+		t.Fatalf("preview token must never execute directly, got %v", err)
+	}
+
+	snapshot, err := service.Snapshot(true)
+	if err != nil {
+		t.Fatalf("snapshot failed: %v", err)
+	}
+	for _, workload := range snapshot.Workloads {
+		if workload.ID == plan.WorkloadID {
+			return
+		}
+	}
+	t.Fatal("preview-only execution must not reclaim the demo workload")
+}
+
+func TestDemoExecuteAfterExplicitConfirmationConsumesBothTokensOnce(t *testing.T) {
+	service := NewService()
+	plan, err := service.Preview("demo-codex-old-branch", true)
+	if err != nil {
+		t.Fatalf("preview failed: %v", err)
+	}
+	confirmation, err := service.Confirm(plan.Token)
+	if err != nil {
+		t.Fatalf("confirm failed: %v", err)
+	}
+	if confirmation.Token == "" || confirmation.Token == plan.Token {
+		t.Fatalf("confirmation must use a fresh execution token: %+v", confirmation)
+	}
+	if confirmation.TargetCount != len(plan.Targets) || confirmation.EstimatedRSS != plan.EstimatedRSS {
+		t.Fatalf("confirmation summary does not match preview: %+v", confirmation)
+	}
+
+	result, err := service.Execute(confirmation.Token)
 	if err != nil {
 		t.Fatalf("execute failed: %v", err)
 	}
 	if len(result.Stopped) != 12 || len(result.Failed) != 0 || result.ReclaimedBytes != plan.EstimatedRSS {
 		t.Fatalf("unexpected action result: %+v", result)
 	}
-	if _, err := service.Execute(plan.Token); err == nil {
-		t.Fatal("reusing an action token must fail")
+	if result.ConfirmedAt <= 0 {
+		t.Fatalf("result must include confirmation time: %+v", result)
+	}
+	if _, err := service.Execute(confirmation.Token); err == nil {
+		t.Fatal("reusing an execution token must fail")
+	}
+	if _, err := service.Confirm(plan.Token); err == nil {
+		t.Fatal("reusing a preview token after confirmation must fail")
 	}
 
 	snapshot, err := service.Snapshot(true)
@@ -79,7 +119,7 @@ func TestDemoExecuteConsumesTokenExactlyOnce(t *testing.T) {
 	}
 }
 
-func TestExpiredActionTokenIsRejected(t *testing.T) {
+func TestExpiredPreviewCannotBeConfirmed(t *testing.T) {
 	service := NewService()
 	plan, err := service.Preview("demo-codex-old-branch", true)
 	if err != nil {
@@ -91,8 +131,29 @@ func TestExpiredActionTokenIsRejected(t *testing.T) {
 	service.pending[plan.Token] = pending
 	service.mu.Unlock()
 
-	if _, err := service.Execute(plan.Token); err == nil || !strings.Contains(err.Error(), "过期") {
-		t.Fatalf("expired token should be rejected, got %v", err)
+	if _, err := service.Confirm(plan.Token); err == nil || !strings.Contains(err.Error(), "过期") {
+		t.Fatalf("expired preview should be rejected, got %v", err)
+	}
+}
+
+func TestExpiredConfirmationCannotExecute(t *testing.T) {
+	service := NewService()
+	plan, err := service.Preview("demo-codex-old-branch", true)
+	if err != nil {
+		t.Fatalf("preview failed: %v", err)
+	}
+	confirmation, err := service.Confirm(plan.Token)
+	if err != nil {
+		t.Fatalf("confirm failed: %v", err)
+	}
+	service.mu.Lock()
+	confirmed := service.confirmed[confirmation.Token]
+	confirmed.expiresAt = time.Now().Add(-time.Second)
+	service.confirmed[confirmation.Token] = confirmed
+	service.mu.Unlock()
+
+	if _, err := service.Execute(confirmation.Token); err == nil || !strings.Contains(err.Error(), "过期") {
+		t.Fatalf("expired confirmation should be rejected, got %v", err)
 	}
 }
 

@@ -208,3 +208,61 @@ func TestThermalNotificationBodyRedactsSensitiveIdentifiers(t *testing.T) {
 		t.Fatalf("notification should route the user to evidence: %s", body)
 	}
 }
+
+func TestThermalHistoryDeduplicatesSameStateWithinOneMinute(t *testing.T) {
+	tracker := newThermalEpisodeTracker()
+	start := time.Date(2026, 11, 8, 12, 0, 0, 0, time.Local)
+	snapshot := thermalTestSnapshot("")
+	first := tracker.observe(thermalReading{state: ThermalNominal, available: true}, snapshot, start)
+	tracker.observe(thermalReading{state: ThermalNominal, available: true}, snapshot, start.Add(25*time.Second))
+	second := tracker.observe(thermalReading{state: ThermalNominal, available: true}, snapshot, start.Add(70*time.Second))
+
+	if len(first.History) != 1 || len(second.History) != 2 {
+		t.Fatalf("same state should sample once per minute: first=%+v second=%+v", first.History, second.History)
+	}
+	if second.History[1].ObservedAt != start.Add(70*time.Second).UnixMilli() {
+		t.Fatalf("thermal sample must use the real observation timestamp: %+v", second.History[1])
+	}
+}
+
+func TestThermalHistoryRecordsStateChangeImmediately(t *testing.T) {
+	tracker := newThermalEpisodeTracker()
+	start := time.Date(2026, 11, 8, 12, 0, 0, 0, time.Local)
+	snapshot := thermalTestSnapshot("")
+	tracker.observe(thermalReading{state: ThermalNominal, available: true}, snapshot, start)
+	status := tracker.observe(thermalReading{state: ThermalFair, available: true}, snapshot, start.Add(5*time.Second))
+
+	if len(status.History) != 2 || status.History[1].State != ThermalFair {
+		t.Fatalf("state changes must be recorded immediately: %+v", status.History)
+	}
+}
+
+func TestThermalHistoryRecordsUnavailableState(t *testing.T) {
+	tracker := newThermalEpisodeTracker()
+	now := time.Date(2026, 11, 8, 12, 0, 0, 0, time.Local)
+	status := tracker.observe(thermalReading{state: ThermalUnavailable}, thermalTestSnapshot(""), now)
+	if len(status.History) != 1 || status.History[0].State != ThermalUnavailable {
+		t.Fatalf("unavailable observations must remain truthful history: %+v", status.History)
+	}
+}
+
+func TestThermalHistoryKeepsBoundedRecentSamples(t *testing.T) {
+	tracker := newThermalEpisodeTracker()
+	start := time.Date(2026, 11, 8, 12, 0, 0, 0, time.Local)
+	snapshot := thermalTestSnapshot("")
+	var status ThermalStatus
+	for i := 0; i <= thermalHistoryLimit+5; i++ {
+		state := ThermalNominal
+		if i%2 == 1 {
+			state = ThermalFair
+		}
+		status = tracker.observe(thermalReading{state: state, available: true}, snapshot, start.Add(time.Duration(i)*time.Minute))
+	}
+	if len(status.History) != thermalHistoryLimit {
+		t.Fatalf("thermal history must stay bounded at %d, got %d", thermalHistoryLimit, len(status.History))
+	}
+	last := start.Add(time.Duration(thermalHistoryLimit+5) * time.Minute)
+	if status.History[len(status.History)-1].ObservedAt != last.UnixMilli() {
+		t.Fatalf("bounded history must retain the newest sample: %+v", status.History[len(status.History)-1])
+	}
+}

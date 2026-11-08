@@ -45,7 +45,7 @@ function Sparkline({ values, risk }: { values: number[]; risk: string }) {
     .map((value, index) => `${(index / Math.max(values.length - 1, 1)) * 72},${24 - (value / max) * 20}`)
     .join(" ");
   return (
-    <svg className={`sparkline sparkline--${signalTone(risk)}`} viewBox="0 0 72 28" role="img" aria-label="最近资源趋势">
+    <svg className={`sparkline sparkline--${signalTone(risk)}`} viewBox="0 0 72 28" role="img" aria-label="应用启动后真实 CPU 采样">
       <polyline points={points} fill="none" stroke="currentColor" strokeWidth="1.8" vectorEffect="non-scaling-stroke" />
     </svg>
   );
@@ -95,6 +95,7 @@ export function HeatTree({ workloads, selectedId, onSelect, onPreview }: HeatTre
         <div className="legend" aria-label="图例">
           <span><i className="legend-dot legend-dot--rss" />面积 = RSS</span>
           <span><i className="legend-dot legend-dot--cpu" />明度 = CPU</span>
+          <span><i className="legend-dot legend-dot--trend" />折线 = 本次运行采样</span>
         </div>
       </header>
 

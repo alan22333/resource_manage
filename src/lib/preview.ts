@@ -1,4 +1,4 @@
-import type { ActionPlan, ActionResult, Workload } from "../mygo";
+import type { ActionConfirmation, ActionPlan, ActionResult, Workload } from "../mygo";
 
 export function makeLocalPreview(workload: Workload): ActionPlan {
   if (!workload.reclaimable) {
@@ -41,6 +41,18 @@ export function makeLocalPreview(workload: Workload): ActionPlan {
   };
 }
 
+export function makeLocalConfirmation(plan: ActionPlan): ActionConfirmation {
+  return {
+    token: `browser-confirmed-${plan.workloadId}-${Date.now()}`,
+    workloadId: plan.workloadId,
+    workloadName: plan.workloadName,
+    targetCount: plan.targets.length,
+    estimatedRssBytes: plan.estimatedRssBytes,
+    confirmedAtUnix: Math.floor(Date.now() / 1000),
+    expiresAtUnix: Math.floor(Date.now() / 1000) + 120,
+  };
+}
+
 export function makeLocalResult(plan: ActionPlan): ActionResult {
   return {
     token: plan.token,
@@ -52,6 +64,7 @@ export function makeLocalResult(plan: ActionPlan): ActionResult {
     pending: [],
     message: `演示：已安全停止 ${plan.targets.length} 个进程，预计释放 ${(plan.estimatedRssBytes / 1e9).toFixed(2)} GB`,
     reclaimedBytes: plan.estimatedRssBytes,
+    confirmedAt: Date.now(),
     finishedAt: Date.now(),
   };
 }

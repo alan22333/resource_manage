@@ -19,25 +19,37 @@ const (
 	defaultSeriousDelay  = 60 * time.Second
 	defaultRecoveryDelay = 2 * time.Minute
 	defaultAlertCooldown = 15 * time.Minute
+
+	thermalHistoryLimit       = 60
+	thermalHistoryMinInterval = time.Minute
 )
+
+// ThermalSample is one observed public thermal-pressure state. It deliberately
+// contains no Celsius field: no synthetic temperature is mixed into this view.
+type ThermalSample struct {
+	State           string `json:"state"`
+	ObservedAt      int64  `json:"observedAt"`
+	DurationSeconds int64  `json:"durationSeconds"`
+}
 
 // ThermalStatus is a user-facing thermal episode. macOS exposes pressure
 // levels, not a portable temperature value, so this model deliberately avoids
 // a Celsius field and uses evidence-backed workload attribution instead.
 type ThermalStatus struct {
-	State             string     `json:"state"`
-	Available         bool       `json:"available"`
-	Active            bool       `json:"active"`
-	Recovering        bool       `json:"recovering"`
-	StartedAt         int64      `json:"startedAt"`
-	DurationSeconds   int64      `json:"durationSeconds"`
-	Cause             string     `json:"cause"`
-	CauseWorkloadID   string     `json:"causeWorkloadId"`
-	CauseWorkloadName string     `json:"causeWorkloadName"`
-	Evidence          []Evidence `json:"evidence"`
-	Recommendation    string     `json:"recommendation"`
-	Confidence        int        `json:"confidence"`
-	ObservedAt        int64      `json:"observedAt"`
+	State             string          `json:"state"`
+	Available         bool            `json:"available"`
+	Active            bool            `json:"active"`
+	Recovering        bool            `json:"recovering"`
+	StartedAt         int64           `json:"startedAt"`
+	DurationSeconds   int64           `json:"durationSeconds"`
+	Cause             string          `json:"cause"`
+	CauseWorkloadID   string          `json:"causeWorkloadId"`
+	CauseWorkloadName string          `json:"causeWorkloadName"`
+	Evidence          []Evidence      `json:"evidence"`
+	Recommendation    string          `json:"recommendation"`
+	Confidence        int             `json:"confidence"`
+	ObservedAt        int64           `json:"observedAt"`
+	History           []ThermalSample `json:"history"`
 }
 
 // ThermalAlert is emitted once after a sustained serious episode, or
@@ -80,6 +92,8 @@ type thermalEpisodeTracker struct {
 	lastNotified    time.Time
 	lastCauseKey    string
 	last            thermalAttribution
+	history         []ThermalSample
+	lastHistoryAt   time.Time
 
 	pending *ThermalAlert
 }
@@ -97,12 +111,14 @@ func (m *thermalEpisodeTracker) observe(reading thermalReading, snapshot Snapsho
 	defer m.mu.Unlock()
 
 	if !reading.available {
+		m.recordHistoryLocked(ThermalUnavailable, now, 0)
 		return ThermalStatus{
 			State:          ThermalUnavailable,
 			Available:      false,
 			Cause:          "当前平台没有公开的系统热压力接口",
 			Recommendation: "继续使用 CPU、内存与任务证据判断后台负载，不要猜测具体温度。",
 			ObservedAt:     now.UnixMilli(),
+			History:        m.historyCopyLocked(),
 		}
 	}
 
@@ -157,6 +173,8 @@ func (m *thermalEpisodeTracker) observe(reading thermalReading, snapshot Snapsho
 			return max(0, int64(now.Sub(m.episodeStart)/time.Second))
 		}(),
 	}
+	m.recordHistoryLocked(state, now, status.DurationSeconds)
+	status.History = m.historyCopyLocked()
 	if m.episodeActive {
 		status.StartedAt = m.episodeStart.UnixMilli()
 	}
@@ -249,6 +267,26 @@ func (m *thermalEpisodeTracker) clearEpisode() {
 	m.seriousAlerted = false
 	m.criticalAlerted = false
 	m.last = thermalAttribution{}
+}
+
+func (m *thermalEpisodeTracker) recordHistoryLocked(state string, now time.Time, duration int64) {
+	sameState := len(m.history) > 0 && m.history[len(m.history)-1].State == state
+	if sameState && !m.lastHistoryAt.IsZero() && now.Sub(m.lastHistoryAt) < thermalHistoryMinInterval {
+		return
+	}
+	m.history = append(m.history, ThermalSample{
+		State:           state,
+		ObservedAt:      now.UnixMilli(),
+		DurationSeconds: max(0, duration),
+	})
+	if len(m.history) > thermalHistoryLimit {
+		m.history = append([]ThermalSample(nil), m.history[len(m.history)-thermalHistoryLimit:]...)
+	}
+	m.lastHistoryAt = now
+}
+
+func (m *thermalEpisodeTracker) historyCopyLocked() []ThermalSample {
+	return append([]ThermalSample(nil), m.history...)
 }
 
 func normalizeThermalState(state string) string {
